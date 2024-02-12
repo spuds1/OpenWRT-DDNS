@@ -1,0 +1,29 @@
+# =============================================================================
+# Porkbun configuration for oddns.sh
+# Copy this to provider.conf
+# =============================================================================
+
+# Your WAN adapter name
+WAN=wan
+
+# Your keys
+APIKEY=
+# Secret key
+APISEC=
+
+# Your domain
+DOMAIN=
+
+# Leave blank if there's no subdomain
+SUBDOMAIN=
+
+# TTL (Default 600)
+TTL=600
+
+# URLs
+GETURL="https://porkbun.com/api/json/v3/dns/retrieveByNameType/$DOMAIN/A$SUBDOMAIN"
+SETURL="https://porkbun.com/api/json/v3/dns/editByNameType/$DOMAIN/A$SUBDOMAIN"
+
+# Data
+GETDATA="{ \"apikey\": \"$APIKEY\", \"secretapikey\": \"$APISEC\" }"
+SETDATA="{ \"secretapikey\": \"$APISEC\", \"apikey\": \"$APIKEY\", \"ttl\": \"$TTL\""
