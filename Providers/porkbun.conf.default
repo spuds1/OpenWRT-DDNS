@@ -20,6 +20,15 @@ SUBDOMAIN=
 # TTL (Default 600)
 TTL=600
 
+# =============================================================================
+# Do not edit below this line
+# =============================================================================
+
+# Add slash if using a subdomain
+if [[ "${#SUBDOMAIN}" -gt 0 ]] ;then
+        SUBDOMAIN="/$SUBDOMAIN"
+fi
+
 # URLs
 GETURL="https://porkbun.com/api/json/v3/dns/retrieveByNameType/$DOMAIN/A$SUBDOMAIN"
 SETURL="https://porkbun.com/api/json/v3/dns/editByNameType/$DOMAIN/A$SUBDOMAIN"

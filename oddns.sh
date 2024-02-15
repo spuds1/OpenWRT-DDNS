@@ -2,47 +2,93 @@
 # OpenWRT Dynamic DNS
 # A simple script to update dynamic DNS
 # Supported providers: porkbun
-# Requires curl and jq
+# Requires curl
 # =============================================================================
 
 echo $( date )
+source ./validadr.sh
 source ./provider.conf
 
-if [ "${#SUBDOMAIN}" -gt 0 ] ;then
-        SUBDOMAIN="/$SUBDOMAIN"
-fi
+# Cached result from provider
+CACHEFILE=/tmp/tmp.oddns
+# Address from provider
+CHECKADR=
+CACHEADR=
+# The current day
+CURDATE=$( date "+%Y%m%d" )
 
-TMPFILE=$( mktemp )
-
+# Get the WAN address
 EXT=$( ip ad show dev $WAN | grep "inet " | cut -d ' ' -f 6 | cut -d '/' -f 0 )
 
 echo "  WAN: $EXT"
+verifyaddress "$EXT"
+VALIDADR=$?
 
-echo "  Checking DDNS provider:"
-curl -s -H "Content-Type: application/json" --data "$GETDATA" "$GETURL" > $TMPFILE
-CHECK=$( jq -r '.records[] | .content ' $TMPFILE )
-VALIDADR=$( echo "$CHECK" | grep -Eo '^(([1-9]?[0-9]|1[0-9][0-9]|2([0-4][0-9]|5[0-5]))\.){3}([1-9]?[0-9]|1[0-9][0-9]|2([0-4][0-9]|5[0-5]))$' )
-
-if [ -n "$VALIDADR" ]; then
-    echo "    Found valid IP address"
+if [[ $VALIDADR -eq 0 ]]; then
+    echo "    Valid IP address"
 else
-    echo "    BAD ADDRESS: $CHECK"
-    echo "  Failed to get remote address."
-    rm $TMPFILE
+    echo "    BAD WAN ADDRESS: $CHECKADR"
+    echo "  Failed to get WAN address."
     exit 1
 fi
 
-echo "  Got: $CHECK"
+# Check for the cache file
+if test -f "$CACHEFILE"; then    
+    # Get first line (date)
+    CACHEDATE=$( sed '1!d' $CACHEFILE )
+    # Get second line (address)
+    CACHEADR=$( sed '2!d' $CACHEFILE )
 
-if [ "$EXT" = "$CHECK" ]; then
+    # Don't update until the date changes
+    if [[ "$CURDATE" -eq "$CACHEDATE" ]]; then
+        echo "  Cache is up-to-date. Using cache."
+        CHECKADR="$CACHEADR"
+    else
+        echo "  Cache is stale."
+    fi
+fi
+
+# No address from cache
+if [[ -z "$CHECKADR" ]]; then
+        echo "  Checking DDNS provider"
+
+        # Get the provider IP address
+        CHECKADR=$( curl -s -H "Content-Type: application/json" --data "$GETDATA" "$GETURL" | jsonfilter -e "@.records[0].content" )
+
+        # Save to the cache
+        echo "$CURDATE" > $CACHEFILE
+        echo "$CHECKADR" >> $CACHEFILE
+fi
+
+verifyaddress "$CHECKADR"
+VALIDADR=$?
+
+echo "  Provider: $CHECKADR"
+
+if [[ $VALIDADR -eq 0 ]]; then
+        echo "    Valid IP address"
+        else
+        echo "    BAD PROVIDER ADDRESS: $CHECKADR"
+        echo "  Failed to get remote address."
+
+        # Cache has bad address
+        if [[ -n "$CACHEADR" ]]; then
+                echo "  Bad address in cache. Deleting."
+                rm $CACHEFILE
+        fi
+
+        exit 1
+fi
+
+if [[ "$EXT" = "$CHECKADR" ]]; then
         echo "  Nothing to do. Addresses match."
 else
         echo "  Updating DNS"
         SETDATA="$SETDATA, \"content\": \"$EXT\" }"
-        curl -s -H "Content-Type: application/json" --data "$SETDATA" "$SETURL" > $TMPFILE
-        SETRESULT=$( jq -r ".status" $TMPFILE )
+        SETRESULT=$( curl -s -H "Content-Type: application/json" --data "$SETDATA" "$SETURL" | jsonfilter -e "@.status" )
         echo "  $SETRESULT"
+        # Invalidate cache
+        rm $CACHEFILE
 fi
 
-rm $TMPFILE
 echo "Done."
